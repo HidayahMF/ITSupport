@@ -712,4 +712,269 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
         }
     }
 
+    // =====================================================================
+    // EXPORT EXCEL (PHPExcel - kompatibel PHP 5.6)
+    // =====================================================================
+
+    public function export_excel()
+    {
+        ini_set('display_errors', '0');
+        error_reporting(0);
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        $filter = array(
+            'status'        => $this->input->get('status'),
+            'nama_user'     => $this->input->get('nama_user'),
+            'no_pr'         => $this->input->get('no_pr'),
+            'nama_barang'   => $this->input->get('nama_barang'),
+            'tanggal_awal'  => $this->input->get('tanggal_awal'),
+            'tanggal_akhir' => $this->input->get('tanggal_akhir'),
+        );
+        $search = $this->input->get('search');
+        $items  = $this->InventoryBarang_model->get_all($filter, $search);
+
+        $grouped = array(
+            'Menunggu Barang'          => array(),
+            'Stock IT'                 => array(),
+            'Sudah Diserahkan ke User' => array(),
+        );
+
+        foreach ($items as $item) {
+            $qty = (float) $item['Qty'];
+
+            if (!empty($item['id'])) {
+                $diterima   = (float) $this->InventoryBarang_model->get_total_diterima($item['id']);
+                $diserahkan = (float) $this->InventoryBarang_model->get_total_diserahkan($item['id']);
+            } else {
+                $diterima   = 0;
+                $diserahkan = 0;
+            }
+
+            if (!empty($item['status']) && $item['status'] === 'Sudah Diserahkan ke User') {
+                $status_efektif = 'Sudah Diserahkan ke User';
+            } elseif ($diterima >= $qty && $qty > 0) {
+                $status_efektif = ($diserahkan >= $diterima) ? 'Sudah Diserahkan ke User' : 'Stock IT';
+            } else {
+                $status_efektif = 'Menunggu Barang';
+            }
+
+            $item['total_diterima']   = $diterima;
+            $item['total_diserahkan'] = $diserahkan;
+            $item['sisa']             = max(0, $qty - $diterima);
+            $item['progress']         = $qty > 0 ? round(($diterima / $qty) * 100) : 0;
+
+            if (!isset($grouped[$status_efektif])) {
+                $grouped[$status_efektif] = array();
+            }
+            $grouped[$status_efektif][] = $item;
+        }
+
+        require_once APPPATH . '../vendor/autoload.php';
+
+        $objPHPExcel = new PHPExcel();
+
+        $headers = array(
+            'No PR', 'Nama User', 'Nama Barang', 'Qty',
+            'Total Diterima', 'Total Diserahkan', 'Sisa', 'Progress (%)',
+            'Tanggal PR', 'Tanggal Terima', 'Toko', 'Keterangan',
+        );
+
+        $sheetColors = array(
+            'Menunggu Barang'          => 'FDE9D9',
+            'Stock IT'                 => 'DCE6F1',
+            'Sudah Diserahkan ke User' => 'E2EFDA',
+        );
+
+        $summarySheet = $objPHPExcel->getActiveSheet();
+        $summarySheet->setTitle('Ringkasan');
+
+        $summarySheet->setCellValue('A1', 'Ringkasan Inventory Barang');
+        $summarySheet->mergeCells('A1:B1');
+        $summarySheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $summarySheet->setCellValue('A2', 'Diambil: ' . date('d-m-Y H:i'));
+        $summarySheet->mergeCells('A2:B2');
+        $summarySheet->getStyle('A2')->getFont()->setItalic(true);
+
+        $summaryRows = array(
+            array('Total PR Aktif', count($items)),
+            array('Menunggu Barang', count($grouped['Menunggu Barang'])),
+            array('Stock IT', count($grouped['Stock IT'])),
+            array('Sudah Diserahkan ke User', count($grouped['Sudah Diserahkan ke User'])),
+        );
+        $r = 4;
+        foreach ($summaryRows as $row) {
+            $summarySheet->setCellValue('A' . $r, $row[0]);
+            $summarySheet->setCellValue('B' . $r, $row[1]);
+            $r++;
+        }
+        $summarySheet->getStyle('A4:A7')->getFont()->setBold(true);
+        $summarySheet->getStyle('A4:B7')->getBorders()->getAllBorders()
+            ->setBorderStyle(PHPExcel_Style_Border::BORDER_THIN);
+        foreach (array('A', 'B') as $c) {
+            $summarySheet->getColumnDimension($c)->setAutoSize(true);
+        }
+
+        $sheetIndex = 1;
+        foreach ($grouped as $statusName => $rows) {
+            $sheet = $objPHPExcel->createSheet($sheetIndex);
+            $sheet->setTitle($statusName);
+
+            $sheet->setCellValue('A1', 'Inventory Barang - ' . $statusName . ' (' . count($rows) . ' PR)');
+            $sheet->mergeCells('A1:L1');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+            $col = 'A';
+            foreach ($headers as $h) {
+                $sheet->setCellValue($col . '3', $h);
+                $col++;
+            }
+            $sheet->getStyle('A3:L3')->getFont()->setBold(true);
+            $sheet->getStyle('A3:L3')->getFill()
+                ->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
+                ->getStartColor()->setRGB($sheetColors[$statusName]);
+
+            $r = 4;
+            foreach ($rows as $item) {
+                $sheet->setCellValue('A' . $r, $item['no_pr']);
+                $sheet->setCellValue('B' . $r, $item['nama_user']);
+                $sheet->setCellValue('C' . $r, $item['nama_barang']);
+                $sheet->setCellValue('D' . $r, $item['Qty']);
+                $sheet->setCellValue('E' . $r, $item['total_diterima']);
+                $sheet->setCellValue('F' . $r, $item['total_diserahkan']);
+                $sheet->setCellValue('G' . $r, $item['sisa']);
+                $sheet->setCellValue('H' . $r, $item['progress']);
+                $sheet->setCellValue('I' . $r, !empty($item['CDate']) ? $item['CDate'] : '');
+                $sheet->setCellValue('J' . $r, !empty($item['tanggal_terima']) ? $item['tanggal_terima'] : '');
+                $sheet->setCellValue('K' . $r, !empty($item['toko']) ? $item['toko'] : '');
+                $sheet->setCellValue('L' . $r, !empty($item['keterangan']) ? $item['keterangan'] : '');
+                $r++;
+            }
+
+            foreach (range('A', 'L') as $c) {
+                $sheet->getColumnDimension($c)->setAutoSize(true);
+            }
+            $sheet->freezePane('A4');
+            if ($r > 4) {
+                $sheet->getStyle('A3:L' . ($r - 1))->getBorders()->getAllBorders()
+                    ->setBorderStyle(PHPExcel_Style_Border::BORDER_THIN);
+            }
+            $sheet->setAutoFilter('A3:L3');
+
+            $sheetIndex++;
+        }
+
+        $objPHPExcel->setActiveSheetIndex(0);
+
+        $filename = 'Inventory_Barang_' . date('Ymd_His') . '.xlsx';
+        $tempPath = sys_get_temp_dir() . '/' . uniqid('inv_', true) . '.xlsx';
+
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel2007');
+        $objWriter->save($tempPath);
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        if (!file_exists($tempPath) || filesize($tempPath) === 0) {
+            show_error('Gagal membuat file Excel. Cek log PHP untuk detail.');
+            return;
+        }
+
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Transfer-Encoding: binary');
+        header('Content-Length: ' . filesize($tempPath));
+        header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+        header('Pragma: public');
+
+        readfile($tempPath);
+        @unlink($tempPath);
+        exit;
+    }
+
+    // =====================================================================
+    // FALLBACK: Export sederhana tanpa library (HTML .xls)
+    // =====================================================================
+
+    public function export_excel_simple()
+    {
+        ini_set('display_errors', '0');
+        error_reporting(0);
+        while (ob_get_level() > 0) { ob_end_clean(); }
+
+        $filter = array(
+            'status'        => $this->input->get('status'),
+            'nama_user'     => $this->input->get('nama_user'),
+            'no_pr'         => $this->input->get('no_pr'),
+            'nama_barang'   => $this->input->get('nama_barang'),
+            'tanggal_awal'  => $this->input->get('tanggal_awal'),
+            'tanggal_akhir' => $this->input->get('tanggal_akhir'),
+        );
+        $search = $this->input->get('search');
+        $items  = $this->InventoryBarang_model->get_all($filter, $search);
+
+        $grouped = array(
+            'Menunggu Barang'          => array(),
+            'Stock IT'                 => array(),
+            'Sudah Diserahkan ke User' => array(),
+        );
+        foreach ($items as $item) {
+            $qty = (float) $item['Qty'];
+
+            if (!empty($item['id'])) {
+                $diterima   = (float) $this->InventoryBarang_model->get_total_diterima($item['id']);
+                $diserahkan = (float) $this->InventoryBarang_model->get_total_diserahkan($item['id']);
+            } else {
+                $diterima   = 0;
+                $diserahkan = 0;
+            }
+
+            if (!empty($item['status']) && $item['status'] === 'Sudah Diserahkan ke User') {
+                $status_efektif = 'Sudah Diserahkan ke User';
+            } elseif ($diterima >= $qty && $qty > 0) {
+                $status_efektif = ($diserahkan >= $diterima) ? 'Sudah Diserahkan ke User' : 'Stock IT';
+            } else {
+                $status_efektif = 'Menunggu Barang';
+            }
+            $item['total_diterima']   = $diterima;
+            $item['total_diserahkan'] = $diserahkan;
+            $item['sisa']             = max(0, $qty - $diterima);
+            $item['progress']         = $qty > 0 ? round(($diterima / $qty) * 100) : 0;
+            $grouped[$status_efektif][] = $item;
+        }
+
+        header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="Inventory_Barang_' . date('Ymd_His') . '.xls"');
+        echo "\xEF\xBB\xBF";
+
+        echo '<table border="1">';
+        foreach ($grouped as $statusName => $rows) {
+            echo '<tr><td colspan="8" style="font-weight:bold;background:#dddddd;font-size:14px;">'
+                . htmlspecialchars($statusName) . ' (' . count($rows) . ' PR)</td></tr>';
+            echo '<tr style="font-weight:bold;background:#f2f2f2;">
+                    <td>No PR</td><td>Nama User</td><td>Nama Barang</td><td>Qty</td>
+                    <td>Total Diterima</td><td>Total Diserahkan</td><td>Sisa</td><td>Progress</td>
+                  </tr>';
+            foreach ($rows as $item) {
+                echo '<tr>
+                        <td>' . htmlspecialchars($item['no_pr']) . '</td>
+                        <td>' . htmlspecialchars($item['nama_user']) . '</td>
+                        <td>' . htmlspecialchars($item['nama_barang']) . '</td>
+                        <td>' . $item['Qty'] . '</td>
+                        <td>' . $item['total_diterima'] . '</td>
+                        <td>' . $item['total_diserahkan'] . '</td>
+                        <td>' . $item['sisa'] . '</td>
+                        <td>' . $item['progress'] . '%</td>
+                      </tr>';
+            }
+            echo '<tr><td colspan="8">&nbsp;</td></tr>';
+        }
+        echo '</table>';
+        exit;
+    }
+
 }
