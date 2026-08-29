@@ -1,6 +1,9 @@
 # === CRITICAL: Database credentials (JANGAN DI-PUSH) ===
 application/config/database.php
 
+# === Local application settings (secrets) ===
+application/config/itsupport.php
+
 # === Environment files ===
 .env
 .env.*

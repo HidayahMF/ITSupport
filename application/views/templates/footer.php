@@ -100,7 +100,7 @@
 
 
 <script>
-    fetch("https://app.bmc.co.id/itSupport/Api/callAPi")
+    fetch("<?= base_url('Api/callAPi') ?>")
         .then(response => response.json())
         .then(data => {
 

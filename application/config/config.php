@@ -21,11 +21,17 @@ date_default_timezone_set('Asia/Jakarta');
 | The auto-detection mechanism exists only for convenience during
 | development and MUST NOT be used in production!
 |
-| If you need to allow multiple domains, remember that this file is still
-| a PHP script and you can easily do that on your own.
+| The value is resolved from the APP_BASE_URL environment variable first
+| (falls back to in-server value, then to CodeIgniter auto-detection).
 |
 */
-$config['base_url'] = 'https://app.bmc.co.id/itSupport/';
+if (getenv('APP_BASE_URL')) {
+    $config['base_url'] = rtrim(getenv('APP_BASE_URL'), '/') . '/';
+} elseif (isset($_SERVER['APP_BASE_URL']) && $_SERVER['APP_BASE_URL']) {
+    $config['base_url'] = rtrim($_SERVER['APP_BASE_URL'], '/') . '/';
+} else {
+    $config['base_url'] = '';
+}
 
 /*
 |--------------------------------------------------------------------------

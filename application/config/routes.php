@@ -55,11 +55,4 @@ $route['translate_uri_dashes'] = FALSE;
 
 // Inventory Barang
 $route['inventorybarang'] = 'InventoryBarang/index';
-$route['inventorybarang/tambah'] = 'InventoryBarang/tambah';
-$route['inventorybarang/simpan'] = 'InventoryBarang/simpan';
-$route['inventorybarang/edit/(:num)'] = 'InventoryBarang/edit/$1';
-$route['inventorybarang/update/(:num)'] = 'InventoryBarang/update/$1';
-$route['inventorybarang/hapus/(:num)'] = 'InventoryBarang/hapus/$1';
-$route['inventorybarang/detail/(:num)'] = 'InventoryBarang/detail/$1';
-$route['inventorybarang/lihat/(:num)'] = 'InventoryBarang/lihat/$1';
 $route['inventorybarang/export_excel'] = 'InventoryBarang/export_excel';

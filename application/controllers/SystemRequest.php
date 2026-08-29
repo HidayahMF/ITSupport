@@ -10,6 +10,38 @@ class SystemRequest extends CI_Controller
         $this->sqlServer = $this->load->database('sqlServer', true);
         $this->load->database();
         $this->load->helper(array('url', 'form'));
+
+        // Load optional application settings (gemini key, etc.).
+        // The real file application/config/itsupport.php is gitignored.
+        if (file_exists(APPPATH . 'config/itsupport.php')) {
+            $this->config->load('itsupport');
+        }
+    }
+
+    /**
+     * Resolve the Google Gemini API key.
+     * Priority: GEMINI_API_KEY env var -> application/config/itsupport.php.
+     * Returns '' when not configured (callers must degrade gracefully).
+     */
+    private function _gemini_api_key()
+    {
+        $key = getenv('GEMINI_API_KEY');
+        if (empty($key)) {
+            $key = $this->config->item('gemini_api_key');
+        }
+        return is_string($key) ? trim($key) : '';
+    }
+
+    /**
+     * Resolve the Google Gemini model name.
+     */
+    private function _gemini_model()
+    {
+        $model = getenv('GEMINI_MODEL');
+        if (empty($model)) {
+            $model = $this->config->item('gemini_model');
+        }
+        return is_string($model) && $model !== '' ? $model : 'gemini-flash-lite-latest';
     }
 
     public function index()
@@ -77,14 +109,17 @@ class SystemRequest extends CI_Controller
 
     public function cek_model()
     {
-        // Masukkan API Key Anda
-        $api_key = 'AQ.Ab8RN6KW4SBhRR7bdASyzMHO3ftWU1wcB6v3B75yXNEJK4ZTPg';
+        $api_key = $this->_gemini_api_key();
 
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models?key=' . $api_key;
+        if ($api_key === '') {
+            echo '<pre>GEMINI_API_KEY belum dikonfigurasi. Lihat application/config/itsupport.example.php.</pre>';
+            return;
+        }
+
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models?key=' . urlencode($api_key);
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $response = curl_exec($ch);
         curl_close($ch);
 
@@ -103,16 +138,16 @@ class SystemRequest extends CI_Controller
             return;
         }
 
-        // Masukkan API Key Anda
-        $api_key = 'AQ.Ab8RN6KW4SBhRR7bdASyzMHO3ftWU1wcB6v3B75yXNEJK4ZTPg';
+        $api_key = $this->_gemini_api_key();
 
-        // Gunakan endpoint model Gemini
-        // $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . $api_key;
-        // $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $api_key;
-        // $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' . $api_key;
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=' . $api_key;
+        if ($api_key === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Fitur AI belum dikonfigurasi.']);
+            return;
+        }
 
-        // $prompt = "Sebagai System Analyst, berikan saran solusi sistem IT yang praktis dan data output yang dibutuhkan berdasarkan masalah berikut. Jawab singkat dan to the point: " . $masalah;
+        $model = $this->_gemini_model();
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($model) . ':generateContent?key=' . urlencode($api_key);
+
         $prompt = "Sebagai System Analyst, berikan saran solusi sistem IT dan data output untuk masalah berikut: " . $masalah . ". Jawab dengan sangat singkat, to the point, dan tidak bertele-tele. DILARANG keras menggunakan format markdown (seperti simbol bintang ** atau pagar ###). Gunakan teks biasa saja dengan penomoran angka standar.";
 
         $data = [
@@ -130,7 +165,6 @@ class SystemRequest extends CI_Controller
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
         $response = curl_exec($ch);
         $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -142,7 +176,7 @@ class SystemRequest extends CI_Controller
             $ai_text = $result['candidates'][0]['content']['parts'][0]['text'];
             echo json_encode(['status' => 'success', 'data' => $ai_text]);
         } else {
-            $error_msg = $result['error']['message'] ? $result['error']['message'] : 'Terjadi kesalahan pada API.';
+            $error_msg = isset($result['error']['message']) ? $result['error']['message'] : 'Terjadi kesalahan pada API.';
             echo json_encode(['status' => 'error', 'message' => "HTTP $httpcode: $error_msg"]);
         }
     }

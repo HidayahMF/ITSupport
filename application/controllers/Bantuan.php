@@ -5,6 +5,12 @@ class Bantuan extends CI_Controller
     {
         parent::__construct();
         $this->load->model("M_dashboard");
+
+        // Optional application settings (WhatsApp gateway, etc.).
+        // The real file application/config/itsupport.php is gitignored.
+        if (file_exists(APPPATH . 'config/itsupport.php')) {
+            $this->config->load('itsupport');
+        }
     }
 
     public function index()
@@ -30,7 +36,7 @@ class Bantuan extends CI_Controller
         if (!empty($_FILES['lampiran']['name'])) {
 
             $path = FCPATH . "uploads/it_support/file/";
-            if (!is_dir($path)) mkdir($path, 0777, true);
+            if (!is_dir($path)) mkdir($path, 0755, true);
 
             // biar aman terhadap spasi & karakter aneh
             $safeName = preg_replace('/[^A-Za-z0-9\.\-_]/', '_', $_FILES['lampiran']['name']);
@@ -44,7 +50,7 @@ class Bantuan extends CI_Controller
         // ====== FOTO ======
         if ($foto) {
             $path = FCPATH . "uploads/it_support/img/";
-            if (!is_dir($path)) mkdir($path, 0777, true);
+            if (!is_dir($path)) mkdir($path, 0755, true);
 
             $fotoName = "foto_" . time() . ".jpg";
             $data = explode(",", $foto);
@@ -92,23 +98,22 @@ class Bantuan extends CI_Controller
             "$link\n\n" .
             "Nama Pelapor: *$nama*";
 
-        // ===== List Nomor Tujuan =====
-        $nohp = [
-            '085782075367',
-            '082125630770',
-            '082220776782',
-            '08111789823',
-            '081977785738'
-        ];
-
-        // ===== API WA =====
-        $url = "http://10.19.25.70:3000/api/send";
+        // ===== Config WhatsApp gateway =====
+        $waUrl = getenv('WHATSAPP_GATEWAY_URL');
+        if (empty($waUrl)) {
+            $waUrl = (string) $this->config->item('wa_gateway_url');
+        }
+        $waRecipients = $this->config->item('wa_recipients');
+        if (empty($waRecipients) || !is_array($waRecipients)) {
+            $waRecipients = array();
+        }
 
         // ===== Simpan hasil =====
         $results = [];
 
         // ===== Loop Kirim WA =====
-        foreach ($nohp as $hp) {
+        if ($waUrl !== '' && count($waRecipients) > 0) {
+            foreach ($waRecipients as $hp) {
 
             // Bersihkan nomor
             $phone = preg_replace('/[^0-9]/', '', $hp);
@@ -128,7 +133,7 @@ class Bantuan extends CI_Controller
             $ch = curl_init();
 
             curl_setopt_array($ch, [
-                CURLOPT_URL => $url,
+                CURLOPT_URL => $waUrl,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_HTTPHEADER => [
@@ -176,6 +181,7 @@ class Bantuan extends CI_Controller
                     'response' => $response
                 ];
             }
+        }
         }
 
         // ===== Final Output =====

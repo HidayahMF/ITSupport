@@ -8,9 +8,10 @@ class InventoryBarang extends CI_Controller
 {
     parent::__construct();
     $this->load->model('InventoryBarang_model');
+    $this->load->library('Inventory_status');
     $this->load->helper('url');
     $this->load->helper('form');
-    $this->load->library('form_validation');   // ← tambahkan baris ini
+    $this->load->library('form_validation');
 }
 
     /**
@@ -62,20 +63,9 @@ class InventoryBarang extends CI_Controller
             $diterima = $item['total_diterima'];
             $diserahkan = $item['total_diserahkan'];
 
-            if (!empty($item['status']) && $item['status'] === 'Sudah Diserahkan ke User') {
-                $item['effective_status'] = 'Sudah Diserahkan ke User';
-            } elseif ($diterima >= $qty && $qty > 0) {
-                if ($diserahkan >= $diterima) {
-                    $item['effective_status'] = 'Sudah Diserahkan ke User';
-                } else {
-                    $item['effective_status'] = 'Stock IT';
-                }
-            } else {
-                $item['effective_status'] = 'Menunggu Barang';
-            }
-
-            $item['progress'] = $qty > 0 ? round(($diterima / $qty) * 100) : 0;
-            $item['sisa'] = max(0, $qty - $diterima);
+            $item['effective_status'] = Inventory_status::effective_status($item['status'], $diterima, $diserahkan, $qty);
+            $item['progress'] = Inventory_status::progress($diterima, $qty);
+            $item['sisa'] = Inventory_status::sisa($qty, $diterima);
         }
         unset($item);
 
@@ -102,16 +92,7 @@ class InventoryBarang extends CI_Controller
         }
 
         foreach ($grouped as &$pr) {
-            $unique = array_unique($pr['statuses']);
-            if (count($unique) === 1) {
-                $pr['status'] = $unique[0];
-            } elseif (in_array('Sudah Diserahkan ke User', $pr['statuses'])) {
-                $pr['status'] = 'Sebagian Diserahkan';
-            } elseif (in_array('Stock IT', $pr['statuses'])) {
-                $pr['status'] = 'Stock IT';
-            } else {
-                $pr['status'] = 'Menunggu Barang';
-            }
+            $pr['status'] = Inventory_status::pr_group_status($pr['statuses']);
             $pr['progress_pct'] = $pr['total_qty'] > 0 ? round(($pr['total_diterima'] / $pr['total_qty']) * 100) : 0;
         }
         unset($pr);
@@ -293,11 +274,9 @@ class InventoryBarang extends CI_Controller
             $total_sudah_diterima = $this->InventoryBarang_model->get_total_diterima($inventory_id);
             $sisa = $qty_total - $total_sudah_diterima;
 
-            if ($qty_diterima > $sisa) {
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => 'Qty diterima (' . $qty_diterima . ') melebihi sisa yang belum diterima (' . $sisa . '). Qty total: ' . $qty_total . ', sudah diterima: ' . $total_sudah_diterima . '.'
-                ));
+            $validation_error = Inventory_status::receive_error($qty_total, $qty_diterima, $total_sudah_diterima);
+            if ($validation_error !== '') {
+                echo json_encode(array('status' => 'error', 'message' => $validation_error));
                 return;
             }
 
@@ -363,7 +342,7 @@ class InventoryBarang extends CI_Controller
 
             // Ambil qty total dari PURC_PURCHREQUEST_TEMP via inventory_barang join
             $inv = $this->InventoryBarang_model->get_by_id($inventory_id);
-            $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], $inv['nama_barang']);
+            $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], $inv['material_id']);
 
             // Hitung total diterima TANPA baris ini, lalu tambah qty baru
             $total_sudah = $this->InventoryBarang_model->get_total_diterima($inventory_id);
@@ -371,12 +350,9 @@ class InventoryBarang extends CI_Controller
             $total_setelah_update = $total_lain + $qty_diterima_baru;
 
             // Validasi: total setelah update tidak boleh melebihi qty total
-            if ($total_setelah_update > $qty_total) {
-                $sisa_max = $qty_total - $total_lain;
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => 'Qty diterima (' . $qty_diterima_baru . ') melebihi sisa maksimal (' . $sisa_max . '). Qty total: ' . $qty_total . ', sudah diterima selain baris ini: ' . $total_lain . '.'
-                ));
+            $validation_error = Inventory_status::receive_error($qty_total, $qty_diterima_baru, $total_lain);
+            if ($validation_error !== '') {
+                echo json_encode(array('status' => 'error', 'message' => $validation_error));
                 return;
             }
 
@@ -545,21 +521,10 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
             $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], $inv['material_id']);
             $total_diterima = $this->InventoryBarang_model->get_total_diterima($inventory_id);
             $total_sudah_diserahkan = $this->InventoryBarang_model->get_total_diserahkan($inventory_id);
-            $sisa_belum_diserahkan = $total_diterima - $total_sudah_diserahkan;
 
-            if ($total_diterima <= 0) {
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => 'Barang belum diterima dari vendor. Tidak bisa melakukan serah terima.'
-                ));
-                return;
-            }
-
-            if ($qty_diserahkan > $sisa_belum_diserahkan) {
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => 'Qty diserahkan (' . $qty_diserahkan . ') melebihi sisa yang belum diserahkan (' . $sisa_belum_diserahkan . '). Total diterima: ' . $total_diterima . ', sudah diserahkan: ' . $total_sudah_diserahkan . '.'
-                ));
+            $validation_error = Inventory_status::handover_error($total_diterima, $qty_diserahkan, $total_sudah_diserahkan);
+            if ($validation_error !== '') {
+                echo json_encode(array('status' => 'error', 'message' => $validation_error));
                 return;
             }
 
@@ -632,12 +597,9 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
             $total_lain = $total_sudah - $qty_lama;
             $total_setelah_update = $total_lain + $qty_diserahkan_baru;
 
-            if ($total_setelah_update > $total_diterima) {
-                $sisa_max = $total_diterima - $total_lain;
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => 'Qty diserahkan (' . $qty_diserahkan_baru . ') melebihi sisa maksimal (' . $sisa_max . '). Total diterima: ' . $total_diterima . ', sudah diserahkan selain baris ini: ' . $total_lain . '.'
-                ));
+            $validation_error = Inventory_status::handover_error($total_diterima, $qty_diserahkan_baru, $total_lain);
+            if ($validation_error !== '') {
+                echo json_encode(array('status' => 'error', 'message' => $validation_error));
                 return;
             }
 
@@ -752,18 +714,12 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
                 $diserahkan = 0;
             }
 
-            if (!empty($item['status']) && $item['status'] === 'Sudah Diserahkan ke User') {
-                $status_efektif = 'Sudah Diserahkan ke User';
-            } elseif ($diterima >= $qty && $qty > 0) {
-                $status_efektif = ($diserahkan >= $diterima) ? 'Sudah Diserahkan ke User' : 'Stock IT';
-            } else {
-                $status_efektif = 'Menunggu Barang';
-            }
+            $status_efektif = Inventory_status::effective_status($item['status'], $diterima, $diserahkan, $qty);
 
             $item['total_diterima']   = $diterima;
             $item['total_diserahkan'] = $diserahkan;
-            $item['sisa']             = max(0, $qty - $diterima);
-            $item['progress']         = $qty > 0 ? round(($diterima / $qty) * 100) : 0;
+            $item['sisa']             = Inventory_status::sisa($qty, $diterima);
+            $item['progress']         = Inventory_status::progress($diterima, $qty);
 
             if (!isset($grouped[$status_efektif])) {
                 $grouped[$status_efektif] = array();
@@ -771,7 +727,20 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
             $grouped[$status_efektif][] = $item;
         }
 
+        if (!file_exists(APPPATH . '../vendor/autoload.php')) {
+            // Composer dependencies (PHPExcel) belum diinstal.
+            // Jatuh ke export sederhana (HTML .xls) yang tanpa dependensi.
+            $this->export_excel_simple();
+            return;
+        }
+
         require_once APPPATH . '../vendor/autoload.php';
+
+        if (!class_exists('PHPExcel')) {
+            // PHPExcel tidak tersedia pada autoloader ini.
+            $this->export_excel_simple();
+            return;
+        }
 
         $objPHPExcel = new PHPExcel();
 
@@ -933,17 +902,11 @@ $qty_total = (int) $this->InventoryBarang_model->get_qty_from_pr($inv['no_pr'], 
                 $diserahkan = 0;
             }
 
-            if (!empty($item['status']) && $item['status'] === 'Sudah Diserahkan ke User') {
-                $status_efektif = 'Sudah Diserahkan ke User';
-            } elseif ($diterima >= $qty && $qty > 0) {
-                $status_efektif = ($diserahkan >= $diterima) ? 'Sudah Diserahkan ke User' : 'Stock IT';
-            } else {
-                $status_efektif = 'Menunggu Barang';
-            }
+            $status_efektif = Inventory_status::effective_status($item['status'], $diterima, $diserahkan, $qty);
             $item['total_diterima']   = $diterima;
             $item['total_diserahkan'] = $diserahkan;
-            $item['sisa']             = max(0, $qty - $diterima);
-            $item['progress']         = $qty > 0 ? round(($diterima / $qty) * 100) : 0;
+            $item['sisa']             = Inventory_status::sisa($qty, $diterima);
+            $item['progress']         = Inventory_status::progress($diterima, $qty);
             $grouped[$status_efektif][] = $item;
         }
 

@@ -60,7 +60,7 @@
 
     <script>
         // URL GAMBAR TEMEN LU
-        // const imgSrc = "<?= base_url('assets/img/temen.jpeg') ?>";
+        const imgSrc = "<?= base_url('assets/img/temen.jpeg') ?>";
 
         function spawnRandomFace() {
             const img = document.createElement("img");

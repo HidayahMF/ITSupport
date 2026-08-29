@@ -545,75 +545,6 @@
     </div>
 </div>
 
-<!-- MODAL DETAIL -->
-<div id="modalDetail" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="p-6">
-            <div class="flex items-center justify-between mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Detail Barang</h3>
-                <button onclick="closeModal()" class="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- TRACKING FLOW -->
-            <div id="trackingFlow" class="mb-6"></div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">No PR</p>
-                    <p id="detailNoPr" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <!-- <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">No MRP</p>
-                    <p id="detailNoMrp" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div> -->
-
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Nama User</p>
-                    <p id="detailNamaUser" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Nama Barang</p>
-                    <p id="detailNamaBarang" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Qty</p>
-                    <p id="detailQty" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Toko</p>
-                    <p id="detailToko" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Tanggal PR</p>
-                    <p id="detailTglPr" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Tanggal Terima</p>
-                    <p id="detailTglTerima" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Tanggal Diserahkan</p>
-                    <p id="detailTglDiserahkan" class="text-sm font-bold text-gray-800 mt-1">-</p>
-                </div>
-                <!-- <div class="p-4 bg-gray-50 rounded-xl">
-                    <p class="text-xs text-gray-500 font-semibold uppercase">Lead Time</p>
-                    <p id="detailLeadTime" class="text-sm font-bold text-blue-600 mt-1">-</p>
-                </div> -->
-
-            </div>
-
-            <div class="mt-4 p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 font-semibold uppercase">Keterangan</p>
-                <p id="detailKeterangan" class="text-sm text-gray-800 mt-1">-</p>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- ============================================================= -->
 <!-- ==== NEW: DataTables JS (dimuat sebelum script utama) ==== -->
 <!-- ============================================================= -->
@@ -687,90 +618,9 @@ function resetFilter() {
     window.location.href = '<?= base_url('inventorybarang') ?>';
 }
 
-// ==================== DETAIL MODAL ====================
-function lihatDetail(id) {
-    $.ajax({
-        url: '<?= base_url('inventorybarang/detail/') ?>' + id,
-        type: 'GET',
-        dataType: 'json',
-        success: function(res) {
-            if (res.status === 'success') {
-                var d = res.data;
-
-                $('#detailNoPr').text(d.no_pr || '-');
-                // $('#detailNoMrp').text(d.no_mrp || '-');
-
-                $('#detailNamaUser').text(d.nama_user || '-');
-                $('#detailNamaBarang').text(d.nama_barang || '-');
-                $('#detailQty').text(d.qty || '-');
-                $('#detailToko').text(d.toko || '-');
-                $('#detailTglPr').text(d.tanggal_pr ? formatTgl(d.tanggal_pr) : '-');
-                $('#detailTglTerima').text(d.tanggal_terima ? formatTgl(d.tanggal_terima) : '-');
-                $('#detailTglDiserahkan').text(d.tanggal_diserahkan ? formatTgl(d.tanggal_diserahkan) : '-');
-                // $('#detailLeadTime').text(d.lead_time || '-');
-
-                $('#detailKeterangan').text(d.keterangan || '-');
-
-                // Tracking flow
-                renderTracking(d.status);
-
-                $('#modalDetail').removeClass('hidden');
-            }
-        }
-    });
-}
-
-function renderTracking(status) {
-    var steps = ['Menunggu Barang', 'Stock IT', 'Sudah Diserahkan ke User'];
-    var icons = ['📦', '📥', '✔️'];
-    var activeIdx = steps.indexOf(status);
-
-    // Handle "Sebagian Diserahkan" - treat as Stock IT for tracking
-    if (activeIdx === -1 && status === 'Sebagian Diserahkan') {
-        activeIdx = 1;
-    }
-
-    var html = '<div class="flex items-center justify-between">';
-    for (var i = 0; i < steps.length; i++) {
-        var isActive = i <= activeIdx;
-        var color = isActive ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500';
-        var lineColor = (i < activeIdx) ? 'bg-green-500' : 'bg-gray-200';
-
-        html += '<div class="flex flex-col items-center flex-1">';
-        html += '<div class="w-10 h-10 rounded-full ' + color + ' flex items-center justify-center text-lg mb-2">' + icons[i] + '</div>';
-        html += '<p class="text-xs font-semibold text-center ' + (isActive ? 'text-green-600' : 'text-gray-400') + '">' + steps[i] + '</p>';
-        html += '</div>';
-
-        if (i < steps.length - 1) {
-            var line = (i < activeIdx) ? 'bg-green-500' : 'bg-gray-200';
-            html += '<div class="flex-1 h-1 ' + line + ' mx-2 rounded-full"></div>';
-        }
-    }
-    html += '</div>';
-
-    $('#trackingFlow').html(html);
-}
-
-function formatTgl(tgl) {
-    var parts = tgl.split('-');
-    return parts[2] + '/' + parts[1] + '/' + parts[0];
-}
-
-function closeModal() {
-    $('#modalDetail').addClass('hidden');
-}
-
-// Close modal on outside click
-$('#modalDetail').on('click', function(e) {
-    if ($(e.target).is('#modalDetail')) {
-        closeModal();
-    }
-});
-
 // =====================================================================
 // PENERIMAAN BARANG
 // =====================================================================
-var inventoryListCache = <?= json_encode($inventory_list) ?>;
 
 // ==== NEW: simpan instance DataTables supaya bisa di-destroy sebelum re-render ====
 var penerimaanDT = null;
